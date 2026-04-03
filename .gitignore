@@ -1,0 +1,7 @@
+config.py
+*.db
+*.csv
+*.xlsx
+__pycache__/
+*.pyc
+.DS_Store
