@@ -795,6 +795,10 @@ def main():
     if not in_window and not args.force_run:
         print('[{}] Not in 13F filing window -- no action needed.'.format(today_str))
         _log_scan(conn, today_str, '', False, 0, 0, False, '')
+        send_email(
+            '13F Scanner -- Outside filing window ({})'.format(today_str),
+            '<html><body><p>13F Scanner ran. Not in quarterly filing window. No action taken.</p></body></html>'
+        )
         return
 
     if args.force_run and not current_qend:
