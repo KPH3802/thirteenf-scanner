@@ -56,6 +56,24 @@ EDGAR_SUBMISSIONS = EDGAR_BASE + '/submissions/CIK{cik}.json'
 
 OPENFIGI_BASE = 'https://api.openfigi.com/v3/mapping'
 
+# ---------------------------------------------------------------------------
+# Signal Intelligence — live logging
+# ---------------------------------------------------------------------------
+def log_signal_intelligence(scan_date, scanner, ticker, direction, fired,
+                             signal_strength=None, signal_bucket=None,
+                             regime_filter_passed=None, regime_value=None,
+                             score=None):
+    try:
+        import sqlite3 as _sl
+        db = os.path.expanduser('~/signal_intelligence.db')
+        c = _sl.connect(db)
+        c.execute('CREATE TABLE IF NOT EXISTS signal_log (id INTEGER PRIMARY KEY AUTOINCREMENT, scan_date TEXT, scanner TEXT, ticker TEXT, direction TEXT, fired INTEGER, signal_strength REAL, signal_bucket TEXT, regime_filter_passed INTEGER, regime_value REAL, score INTEGER, autotrader_acted INTEGER, created_at TEXT DEFAULT CURRENT_TIMESTAMP)')
+        c.execute('INSERT INTO signal_log (scan_date,scanner,ticker,direction,fired,signal_strength,signal_bucket,regime_filter_passed,regime_value,score) VALUES (?,?,?,?,?,?,?,?,?,?)',
+                  (scan_date,scanner,ticker,direction,fired,signal_strength,signal_bucket,regime_filter_passed,regime_value,score))
+        c.commit(); c.close()
+    except Exception:
+        pass
+
 # Quarter end dates (month, day)
 QUARTER_ENDS = [
     (3,  31),   # Q1
@@ -524,18 +542,27 @@ def detect_signals(conn, current_qend, prev_qend):
 
     # Filter to MIN_NEW_INITIATIONS+
     signals = []
+    today_str = datetime.utcnow().strftime('%Y-%m-%d')
     for ticker, info in new_initiations.items():
-        if len(info['filers']) >= config.MIN_NEW_INITIATIONS:
+        n_init = len(info['filers'])
+        _bucket = '5+' if n_init >= 5 else str(n_init)
+        if n_init >= config.MIN_NEW_INITIATIONS:
             filer_names = [f[1] for f in info['filers']]
             total_value = sum(f[2] for f in info['filers'])
+            log_signal_intelligence(today_str, 'THIRTEENF_BULL', ticker, 'BUY', 1,
+                                    signal_strength=float(n_init), signal_bucket=_bucket)
             signals.append({
                 'ticker':       ticker,
                 'company_name': info['company_name'],
-                'initiators':   len(info['filers']),
+                'initiators':   n_init,
                 'filer_names':  filer_names,
                 'total_value':  total_value,
                 'quarter_end':  cqe,
             })
+        else:
+            # Below threshold — log as not fired
+            log_signal_intelligence(today_str, 'THIRTEENF_BULL', ticker, 'BUY', 0,
+                                    signal_strength=float(n_init), signal_bucket=_bucket)
 
     # Remove already-emailed tickers for this quarter
     c.execute('SELECT ticker FROM emailed_signals WHERE quarter_end = ?', (cqe,))
