@@ -265,7 +265,7 @@ def parse_infotable_xml(xml_bytes):
     try:
         text = xml_bytes.decode('utf-8', errors='replace')
         # Remove namespace prefixes
-        text = re.sub(r'<[^>]*?:', '<', text)
+        text = re.sub(r'<(?!/)[^>]*?:', '<', text)  # fix: don't match closing tags
         text = re.sub(r'</[^>]*?:', '</', text)
 
         for block in re.findall(r'<infoTable>(.*?)</infoTable>', text, re.DOTALL | re.IGNORECASE):
@@ -332,21 +332,25 @@ def get_infotable_url(cik, accession):
             html = resp.read().decode('utf-8', errors='replace')
         time.sleep(config.SEC_REQUEST_DELAY)
 
-        patterns = [
-            r'href="(/Archives/edgar/data/[^"]*?infotable[^"]*?\.xml)"',
-            r'href="(/Archives/edgar/data/[^"]*?\.xml)"',
-        ]
-        for pat in patterns:
-            m = re.search(pat, html, re.IGNORECASE)
-            if m:
-                return 'https://www.sec.gov' + m.group(1)
-
-        m = re.search(
-            r'href="(/Archives/edgar/data/{}/{}/[^"]+\.xml)"'.format(cik_clean, accession),
-            html, re.IGNORECASE
-        )
-        if m:
-            return 'https://www.sec.gov' + m.group(1)
+        # Find all XML links (fix Apr 2026: primary_doc matched before holdings)
+        all_xml = re.findall(r'href="(/Archives/edgar/data/[^"]*?\.xml)"', html, re.IGNORECASE)
+        # Priority 1: infotable in filename
+        for url in all_xml:
+            if 'infotable' in url.lower():
+                return 'https://www.sec.gov' + url
+        # Priority 2: numeric XML at root level, skip primary_doc and xslForm
+        for url in all_xml:
+            filename = url.split('/')[-1]
+            if 'primary_doc' in url.lower() or 'xslform' in url.lower():
+                continue
+            if re.match(r'^\d+\.xml$', filename):
+                return 'https://www.sec.gov' + url
+        # Priority 3: any non-primary XML at accession root
+        for url in all_xml:
+            if 'primary_doc' in url.lower() or 'xslform' in url.lower():
+                continue
+            if '/' + accession + '/' in url:
+                return 'https://www.sec.gov' + url
 
     except Exception as e:
         print('    Index fetch error: {}'.format(e))
