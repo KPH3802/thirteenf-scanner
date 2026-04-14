@@ -366,7 +366,7 @@ def map_cusips_to_tickers(cusips):
         return {}
 
     result = {}
-    batch_size = 100
+    batch_size = 10
 
     headers = {'Content-Type': 'application/json'}
     if config.OPENFIGI_API_KEY:
