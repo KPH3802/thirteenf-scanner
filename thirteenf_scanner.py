@@ -336,7 +336,7 @@ def get_infotable_url(cik, accession):
         all_xml = re.findall(r'href="(/Archives/edgar/data/[^"]*?\.xml)"', html, re.IGNORECASE)
         # Priority 1: infotable in filename
         for url in all_xml:
-            if 'infotable' in url.lower():
+            if 'infotable' in url.lower() and 'xslform' not in url.lower():
                 return 'https://www.sec.gov' + url
         # Priority 2: numeric XML at root level, skip primary_doc and xslForm
         for url in all_xml:
