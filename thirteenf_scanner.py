@@ -37,7 +37,7 @@ import traceback
 import re
 import urllib.request
 import urllib.error
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, date, timezone
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
@@ -546,7 +546,7 @@ def detect_signals(conn, current_qend, prev_qend):
 
     # Filter to MIN_NEW_INITIATIONS+
     signals = []
-    today_str = datetime.utcnow().strftime('%Y-%m-%d')
+    today_str = datetime.now(timezone.utc).strftime('%Y-%m-%d')
     for ticker, info in new_initiations.items():
         n_init = len(info['filers'])
         _bucket = '5+' if n_init >= 5 else str(n_init)
@@ -693,7 +693,7 @@ def build_signal_html(signals, vix, ql_str, qe_str, pqe_str):
         mi=config.MIN_NEW_INITIATIONS, hd=config.HOLD_DAYS,
         ks=kill_switch_banner, rows=rows,
         ns=len(signals),
-        ts=datetime.utcnow().strftime('%Y-%m-%d %H:%M')
+        ts=datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')
     )
     return body
 
