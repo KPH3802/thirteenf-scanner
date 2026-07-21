@@ -238,6 +238,7 @@ def get_13f_filings(cik):
                 'accession':   accessions[i].replace('-', ''),
                 'filed_date':  filed_dates[i],
                 'report_date': report_dates[i] if i < len(report_dates) else '',
+                'form':        form,
             })
 
     filings.sort(key=lambda x: x['filed_date'], reverse=True)
@@ -245,18 +246,39 @@ def get_13f_filings(cik):
 
 
 def get_filing_for_quarter(filings, quarter_end):
-    """Find the 13F-HR filing whose report_date matches the target quarter."""
+    """Find the original 13F-HR filing whose report_date matches the target quarter.
+
+    A quarter can have both an original 13F-HR and a later 13F-HR/A amendment
+    for the same report period. Amendments are frequently PARTIAL restatements
+    (e.g. confidential-treatment releases filed months after the window) that
+    carry only the changed positions -- or, for a cover-only correction, none
+    at all. Selecting the amendment therefore collapses the holdings list to a
+    handful (or zero), which starves signal detection. Q1 (Mar 31) report
+    periods attract these amendments most, which is why Q1 went silent.
+
+    So: gather every filing matching the quarter, then prefer the complete
+    original 13F-HR; only fall back to a 13F-HR/A when no original exists.
+    """
     qe_str = quarter_end.strftime('%Y-%m-%d')
+    matches = []
     for f in filings:
         if f['report_date'] == qe_str:
-            return f
+            matches.append(f)
+            continue
         try:
             rd = date.fromisoformat(f['report_date'])
             if abs((rd - quarter_end).days) <= 5:
-                return f
+                matches.append(f)
         except Exception:
             pass
-    return None
+
+    if not matches:
+        return None
+
+    originals = [f for f in matches if f.get('form') == '13F-HR']
+    if originals:
+        return originals[0]
+    return matches[0]
 
 
 def parse_infotable_xml(xml_bytes):
