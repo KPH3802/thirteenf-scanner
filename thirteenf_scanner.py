@@ -71,8 +71,8 @@ def log_signal_intelligence(scan_date, scanner, ticker, direction, fired,
         c.execute('INSERT INTO signal_log (scan_date,scanner,ticker,direction,fired,signal_strength,signal_bucket,regime_filter_passed,regime_value,score) VALUES (?,?,?,?,?,?,?,?,?,?)',
                   (scan_date,scanner,ticker,direction,fired,signal_strength,signal_bucket,regime_filter_passed,regime_value,score))
         c.commit(); c.close()
-    except Exception:
-        pass
+    except Exception as _sl_err:
+        print(f"[SIGNAL_LOG_FAIL] {scanner} {ticker}: {type(_sl_err).__name__}: {_sl_err}", flush=True)
 
 # Quarter end dates (month, day)
 QUARTER_ENDS = [
@@ -798,6 +798,23 @@ def print_status(conn):
 # ============================================================
 # LOG HELPER
 # ============================================================
+def log_scan_run(scanner, source_status, n_evaluated, n_fired=0, note='', db_path=None):
+    """One row per scanner run -> shared ~/signal_intelligence.db scan_runs table.
+
+    13F only had a LOCAL scan_log, so a dead run was invisible in the cross-scanner
+    monitor. This is the shared heartbeat. Loud on write failure, never raises."""
+    try:
+        import sqlite3 as _sl
+        db = db_path or os.path.expanduser('~/signal_intelligence.db')
+        c = _sl.connect(db)
+        c.execute('CREATE TABLE IF NOT EXISTS scan_runs (id INTEGER PRIMARY KEY AUTOINCREMENT, ran_at TEXT DEFAULT CURRENT_TIMESTAMP, scanner TEXT, source_status TEXT, n_evaluated INTEGER, n_fired INTEGER, note TEXT)')
+        c.execute('INSERT INTO scan_runs (scanner, source_status, n_evaluated, n_fired, note) VALUES (?,?,?,?,?)',
+                  (scanner, source_status, n_evaluated, n_fired, note))
+        c.commit(); c.close()
+    except Exception as _sr_err:
+        print(f"[SCAN_RUN_FAIL] {scanner}: {type(_sr_err).__name__}: {_sr_err}", flush=True)
+
+
 def _log_scan(conn, scan_date, qe_str, in_window, filers, signals, emailed, errors):
     c = conn.cursor()
     c.execute("""
@@ -806,6 +823,9 @@ def _log_scan(conn, scan_date, qe_str, in_window, filers, signals, emailed, erro
         VALUES (?,?,?,?,?,?,?)
     """, (scan_date, qe_str, int(in_window), filers, signals, int(emailed), errors))
     conn.commit()
+    # Shared cross-scanner heartbeat: one row per run at every _log_scan exit.
+    status = 'ERROR' if errors else ('OUT_OF_WINDOW' if not in_window else 'OK')
+    log_scan_run('THIRTEENF', status, filers, signals, note=qe_str or scan_date)
 
 
 # ============================================================
